@@ -77,13 +77,25 @@ def integrate_to_common_grid(bins_in, cont_in, bins_out):
     return cont
 
 
-def apec_convert_tables():
-    """Load APEC tables (currently v3.0.9) and convert to a more suitable format for later use."""
+def apec_convert_tables(path_line=None, path_cont=None, fileName=None):
+    """Load APEC tables (currently v3.0.9) and convert to a more suitable format for later use.
+
+    Args:
+      path_line (str or None): APEC line emissivity file. Default: ``~/code/atomdb/apec_line.fits``.
+      path_cont (str or None): APEC continuum file. Default: ``~/code/atomdb/apec_coco.fits``.
+      fileName (str or None): output HDF5 table. Default: ``apec.hdf5`` in the x-ray data tables
+        directory (``basePath``), where :py:class:`xrayEmission` loads it from by default.
+    """
     from ..util.units import units
 
+    # input files: the defaults are the plain AtomDB names in ~/code/atomdb/, but other
+    # locations and the versioned file names of other distributions (e.g. SOXS ships
+    # apec_v3.0.9_line.fits and apec_v3.0.9_coco.fits) can be given explicitly
     base = expanduser("~") + "/code/atomdb/"
-    path_line = base + "apec_line.fits"
-    path_cont = base + "apec_coco.fits"
+    if path_line is None:
+        path_line = base + "apec_line.fits"
+    if path_cont is None:
+        path_cont = base + "apec_coco.fits"
 
     # define our master wavelength grid
     dtype = "float64"
@@ -237,7 +249,8 @@ def apec_convert_tables():
     # and save 2D table integrating e.g. 0.5-2.0 kev, and converting each photon to its energy,
     # with grid config [temp_kev, metal_solar], in units of [erg cm^3 s^-1]
     # such that multiplication by n*n*V gives [erg s^-1] in this band-pass
-    fileName = basePath + "apec.hdf5"
+    if fileName is None:
+        fileName = basePath + "apec.hdf5"  # default output location
     with h5py.File(fileName, "w") as f:
         f["redshift"] = np.array(redshifts)
         f["temp"] = np.log10(temp_kev)  # log kev
@@ -282,10 +295,13 @@ def apec_convert_tables():
 class xrayEmission:
     """Use pre-computed APEC or XSPEC table to derive x-ray emissivities for simulation gas cells."""
 
-    def __init__(self, sP, instrument=None, order=3, use_apec=False):
+    def __init__(self, sP, instrument=None, order=3, use_apec=False, tableFile=None):
         """Load the table, optionally only for a given instrument(s).
 
         If instruments ends in '_NoMet', use this table instead.
+        If tableFile (full path) is given, load that file instead of the default table in the
+        x-ray data tables directory, e.g. an APEC table written elsewhere by
+        :py:func:`apec_convert_tables` (``fileName`` argument).
         """
         self.sP = sP
 
@@ -311,7 +327,10 @@ class xrayEmission:
 
             fileName = "apec.hdf5"
 
-        with h5py.File(basePath + fileName, "r") as f:
+        # an explicitly given table file takes precedence over the default location
+        filePath = basePath + fileName if tableFile is None else tableFile
+
+        with h5py.File(filePath, "r") as f:
             # load grid specification
             for name in self.gridNames:
                 self.grid[name] = f[name][()]
