@@ -77,7 +77,7 @@ def integrate_to_common_grid(bins_in, cont_in, bins_out):
     return cont
 
 
-def apec_convert_tables(path_line=None, path_cont=None, fileName=None):
+def apec_convert_tables(path_line=None, path_cont=None, fileName=None, completeLines=False):
     """Load APEC tables (currently v3.0.9) and convert to a more suitable format for later use.
 
     Args:
@@ -85,6 +85,9 @@ def apec_convert_tables(path_line=None, path_cont=None, fileName=None):
       path_cont (str or None): APEC continuum file. Default: ``~/code/atomdb/apec_coco.fits``.
       fileName (str or None): output HDF5 table. Default: ``apec.hdf5`` in the x-ray data tables
         directory (``basePath``), where :py:class:`xrayEmission` loads it from by default.
+      completeLines (bool): if True, add every APEC line to its energy bin. The default (False)
+        keeps the original deposition, in which several lines of the same element falling into
+        the same energy bin (in one temperature block) leave only the last of them in the table.
     """
     from ..util.units import units
 
@@ -196,7 +199,14 @@ def apec_convert_tables(path_line=None, path_cont=None, fileName=None):
             # we combine all elements and ions together, could keep them separate if there was some reason
             ind = np.clip(np.searchsorted(master_grid, wave_kev, side="left") - 1, a_min=0, a_max=None)
 
-            master_line[i, atomic_number_Z, ind] += emis
+            if completeLines:
+                # unbuffered accumulation: every line is added, also when several lines of one
+                # element share an energy bin
+                np.add.at(master_line[i], (atomic_number_Z, ind), emis)
+            else:
+                # note: a buffered fancy-index add; for repeated (element, bin) pairs numpy applies
+                # only one of the updates (the last line), so the other lines of that pair are lost
+                master_line[i, atomic_number_Z, ind] += emis
 
     for j in range(n_atom_bins):
         print(
